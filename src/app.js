@@ -529,11 +529,12 @@ class TwitterListRSS {
   // For traditional server deployment
   start() {
     const port = process.env.PORT || 3000;
+    const host = process.env.HOST || '0.0.0.0'; // Bind to all interfaces for cloud platforms
     
-    this.app.listen(port, () => {
-      Logger.info('TwitterListRSS', `Twitter List RSS server running on port ${port}`);
-      Logger.info('TwitterListRSS', `RSS feed available at: http://localhost:${port}/rss`);
-      Logger.info('TwitterListRSS', `Status page available at: http://localhost:${port}/status`);
+    this.app.listen(port, host, () => {
+      Logger.info('TwitterListRSS', `Twitter List RSS server running on ${host}:${port}`);
+      Logger.info('TwitterListRSS', `RSS feed available at: http://${host}:${port}/rss`);
+      Logger.info('TwitterListRSS', `Status page available at: http://${host}:${port}/status`);
     });
 
     // Graceful shutdown
@@ -553,10 +554,14 @@ class TwitterListRSS {
 // Export for both serverless and traditional deployment
 const twitterRSS = new TwitterListRSS();
 
-// For serverless (Vercel)
+// For serverless (Vercel) - export the express app
 module.exports = twitterRSS.getApp();
 
-// For traditional server deployment
+// Also export the instance for traditional server deployment
+module.exports.twitterRSSInstance = twitterRSS;
+module.exports.TwitterListRSS = TwitterListRSS;
+
+// For traditional server deployment when this file is run directly
 if (require.main === module) {
   twitterRSS.start();
 }
