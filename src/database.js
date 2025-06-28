@@ -1,9 +1,31 @@
 const sqlite3 = require('sqlite3').verbose();
 const path = require('path');
 
+// Simple logger for database operations
+const dbLogger = {
+  info: (message, meta = {}) => {
+    const timestamp = new Date().toISOString();
+    const metaStr = Object.keys(meta).length > 0 ? ` ${JSON.stringify(meta)}` : '';
+    console.log(`[${timestamp}] [INFO] [DATABASE] ${message}${metaStr}`);
+  },
+  error: (message, meta = {}) => {
+    const timestamp = new Date().toISOString();
+    const metaStr = Object.keys(meta).length > 0 ? ` ${JSON.stringify(meta)}` : '';
+    console.error(`[${timestamp}] [ERROR] [DATABASE] ${message}${metaStr}`);
+  },
+  debug: (message, meta = {}) => {
+    if (process.env.NODE_ENV === 'development' || process.env.DEBUG === 'true') {
+      const timestamp = new Date().toISOString();
+      const metaStr = Object.keys(meta).length > 0 ? ` ${JSON.stringify(meta)}` : '';
+      console.log(`[${timestamp}] [DEBUG] [DATABASE] ${message}${metaStr}`);
+    }
+  }
+};
+
 class Database {
   constructor() {
     this.db = null;
+    dbLogger.info('Initializing database connection');
     this.init();
   }
 
@@ -15,26 +37,38 @@ class Database {
       ? '/tmp/tweets.db' 
       : path.join(__dirname, '..', 'data', 'tweets.db');
     
+    dbLogger.info('Database path determined', { 
+      path: dbPath, 
+      isServerless,
+      environment: process.env.NODE_ENV || 'unknown'
+    });
+    
     // Ensure data directory exists (only for non-serverless)
     if (!isServerless) {
       const fs = require('fs');
       const dataDir = path.dirname(dbPath);
       if (!fs.existsSync(dataDir)) {
+        dbLogger.info('Creating data directory', { dataDir });
         fs.mkdirSync(dataDir, { recursive: true });
       }
     }
 
     this.db = new sqlite3.Database(dbPath, (err) => {
       if (err) {
-        console.error('Error opening database:', err);
+        dbLogger.error('Failed to open database', { 
+          error: err.message, 
+          path: dbPath 
+        });
       } else {
-        console.log(`Connected to SQLite database at ${dbPath}`);
+        dbLogger.info('Database connection established', { path: dbPath });
         this.createTables();
       }
     });
   }
 
   createTables() {
+    dbLogger.info('Creating database tables if they do not exist');
+    
     const createTweetsTable = `
       CREATE TABLE IF NOT EXISTS tweets (
         id TEXT PRIMARY KEY,
@@ -66,16 +100,41 @@ class Database {
       'CREATE INDEX IF NOT EXISTS idx_config_key ON config(key)'
     ];
 
-    this.db.run(createTweetsTable);
-    this.db.run(createConfigTable);
+    this.db.run(createTweetsTable, (err) => {
+      if (err) {
+        dbLogger.error('Failed to create tweets table', { error: err.message });
+      } else {
+        dbLogger.info('Tweets table created or verified');
+      }
+    });
+    
+    this.db.run(createConfigTable, (err) => {
+      if (err) {
+        dbLogger.error('Failed to create config table', { error: err.message });
+      } else {
+        dbLogger.info('Config table created or verified');
+      }
+    });
     
     // Create indexes
-    createIndexes.forEach(indexQuery => {
-      this.db.run(indexQuery);
+    dbLogger.info('Creating performance indexes');
+    createIndexes.forEach((indexQuery, i) => {
+      this.db.run(indexQuery, (err) => {
+        if (err) {
+          dbLogger.error('Failed to create index', { 
+            error: err.message, 
+            indexNumber: i + 1 
+          });
+        } else {
+          dbLogger.debug('Index created or verified', { indexNumber: i + 1 });
+        }
+      });
     });
   }
 
   async saveTweets(tweets) {
+    dbLogger.info('Saving tweets to database', { count: tweets.length });
+    
     return new Promise((resolve, reject) => {
       const stmt = this.db.prepare(`
         INSERT OR REPLACE INTO tweets 
@@ -83,7 +142,10 @@ class Database {
         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
       `);
 
-      tweets.forEach(tweet => {
+      let savedCount = 0;
+      let errors = [];
+
+      tweets.forEach((tweet, index) => {
         stmt.run([
           tweet.id,
           tweet.text,
@@ -94,12 +156,42 @@ class Database {
           JSON.stringify(tweet.public_metrics || {}),
           JSON.stringify(tweet.entities || {}),
           JSON.stringify(tweet.referenced_tweets || [])
-        ]);
+        ], (err) => {
+          if (err) {
+            errors.push({ index, tweetId: tweet.id, error: err.message });
+            dbLogger.error('Failed to save tweet', { 
+              tweetId: tweet.id, 
+              index, 
+              error: err.message 
+            });
+          } else {
+            savedCount++;
+            dbLogger.debug('Tweet saved', { tweetId: tweet.id, index });
+          }
+        });
       });
 
       stmt.finalize((err) => {
-        if (err) reject(err);
-        else resolve();
+        if (err) {
+          dbLogger.error('Failed to finalize statement', { 
+            error: err.message,
+            savedCount,
+            totalCount: tweets.length
+          });
+          reject(err);
+        } else {
+          dbLogger.info('Tweets save operation completed', { 
+            savedCount, 
+            totalCount: tweets.length,
+            errorCount: errors.length
+          });
+          
+          if (errors.length > 0) {
+            dbLogger.error('Some tweets failed to save', { errors });
+          }
+          
+          resolve();
+        }
       });
     });
   }

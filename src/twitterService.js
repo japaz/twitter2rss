@@ -1,12 +1,46 @@
 const { TwitterApi } = require('twitter-api-v2');
 
+// Simple logger for Twitter service operations
+const twitterLogger = {
+  info: (message, meta = {}) => {
+    const timestamp = new Date().toISOString();
+    const metaStr = Object.keys(meta).length > 0 ? ` ${JSON.stringify(meta)}` : '';
+    console.log(`[${timestamp}] [INFO] [TWITTER] ${message}${metaStr}`);
+  },
+  error: (message, meta = {}) => {
+    const timestamp = new Date().toISOString();
+    const metaStr = Object.keys(meta).length > 0 ? ` ${JSON.stringify(meta)}` : '';
+    console.error(`[${timestamp}] [ERROR] [TWITTER] ${message}${metaStr}`);
+  },
+  debug: (message, meta = {}) => {
+    if (process.env.NODE_ENV === 'development' || process.env.DEBUG === 'true') {
+      const timestamp = new Date().toISOString();
+      const metaStr = Object.keys(meta).length > 0 ? ` ${JSON.stringify(meta)}` : '';
+      console.log(`[${timestamp}] [DEBUG] [TWITTER] ${message}${metaStr}`);
+    }
+  },
+  warn: (message, meta = {}) => {
+    const timestamp = new Date().toISOString();
+    const metaStr = Object.keys(meta).length > 0 ? ` ${JSON.stringify(meta)}` : '';
+    console.warn(`[${timestamp}] [WARN] [TWITTER] ${message}${metaStr}`);
+  }
+};
+
 class TwitterService {
   constructor(bearerToken) {
+    twitterLogger.info('Initializing Twitter service');
     this.client = new TwitterApi(bearerToken, { appContext: 'read-only' });
     this.readOnlyClient = this.client.readOnly;
+    twitterLogger.info('Twitter service initialized');
   }
 
   async getListTweets(listId, sinceId = null) {
+    const startTime = Date.now();
+    twitterLogger.info('Fetching tweets from list', { 
+      listId, 
+      sinceId: sinceId || 'none (initial fetch)' 
+    });
+    
     try {
       const options = {
         max_results: 100, // Maximum allowed for free tier
@@ -30,12 +64,12 @@ class TwitterService {
         options.since_id = sinceId;
       }
 
-      console.log(`Fetching tweets for list ${listId}${sinceId ? ` since ${sinceId}` : ''}`);
+      twitterLogger.debug('API request options', { options });
       
       const response = await this.readOnlyClient.v2.listTweets(listId, options);
       
       if (!response.data || response.data.length === 0) {
-        console.log('No new tweets found');
+        twitterLogger.info('No new tweets found in API response');
         return [];
       }
 
@@ -44,6 +78,9 @@ class TwitterService {
       if (response.includes?.users) {
         response.includes.users.forEach(user => {
           usersMap[user.id] = user;
+        });
+        twitterLogger.debug('User information processed', { 
+          userCount: response.includes.users.length 
         });
       }
 
@@ -65,18 +102,35 @@ class TwitterService {
         };
       });
 
-      console.log(`Fetched ${tweets.length} tweets`);
+      const duration = Date.now() - startTime;
+      twitterLogger.info('Tweet fetch completed successfully', {
+        listId,
+        fetchedCount: tweets.length,
+        duration_ms: duration,
+        hasUsers: !!response.includes?.users
+      });
+
       return tweets;
 
     } catch (error) {
-      console.error('Error fetching tweets:', error);
+      const duration = Date.now() - startTime;
+      twitterLogger.error('Tweet fetch failed', {
+        listId,
+        sinceId,
+        error: error.message,
+        code: error.code,
+        duration_ms: duration
+      });
       
       // Handle specific API errors
       if (error.code === 429) {
+        twitterLogger.warn('Rate limit exceeded, will retry later');
         throw new Error('Rate limit exceeded. Will retry later.');
       } else if (error.code === 404) {
+        twitterLogger.error('List not found - check list ID and permissions');
         throw new Error('List not found. Please check the list ID.');
       } else if (error.code === 401) {
+        twitterLogger.error('Authentication failed - check API credentials');
         throw new Error('Unauthorized. Please check your Twitter API credentials.');
       }
       
@@ -85,25 +139,46 @@ class TwitterService {
   }
 
   async verifyCredentials() {
+    twitterLogger.info('Verifying Twitter API credentials');
+    
     try {
       const response = await this.readOnlyClient.v2.me();
-      console.log('Twitter API credentials verified successfully');
+      twitterLogger.info('Twitter API credentials verified successfully', {
+        userId: response.data?.id,
+        username: response.data?.username
+      });
       return true;
     } catch (error) {
-      console.error('Failed to verify Twitter API credentials:', error.message);
+      twitterLogger.error('Failed to verify Twitter API credentials', {
+        error: error.message,
+        code: error.code
+      });
       return false;
     }
   }
 
   async getListInfo(listId) {
+    twitterLogger.info('Fetching list information', { listId });
+    
     try {
       const response = await this.readOnlyClient.v2.list(listId, {
         'list.fields': 'name,description,member_count,follower_count'
       });
       
+      twitterLogger.info('List information retrieved successfully', {
+        listId,
+        name: response.data?.name,
+        memberCount: response.data?.member_count,
+        followerCount: response.data?.follower_count
+      });
+      
       return response.data;
     } catch (error) {
-      console.error('Error fetching list info:', error);
+      twitterLogger.error('Failed to fetch list information', {
+        listId,
+        error: error.message,
+        code: error.code
+      });
       return null;
     }
   }

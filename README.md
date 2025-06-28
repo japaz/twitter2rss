@@ -149,6 +149,8 @@ Health check endpoint for monitoring.
 | `RSS_CACHE_TTL` | No | 300 | RSS cache TTL in seconds |
 | `MAX_TWEETS_PER_FEED` | No | 50 | Maximum tweets in RSS feed |
 | `RETENTION_DAYS` | No | 30 | Days to keep tweets |
+| `DEBUG` | No | false | Enable debug logging |
+| `LOG_LEVEL` | No | info | Log level (debug/info/warn/error) |
 
 ### Adaptive Scheduling
 
@@ -160,6 +162,46 @@ The application automatically adjusts how often it checks for new tweets:
 - **No Activity**: Gradually increases interval between checks (up to maximum)
 
 This ensures efficient use of Twitter API rate limits while keeping the feed updated.
+
+## Logging and Debugging
+
+The application provides comprehensive structured logging for debugging and monitoring:
+
+### Log Format
+All logs follow a structured format with timestamps, service identification, and metadata:
+```
+[2025-06-28T10:30:45.123Z] [INFO] [SERVICE] Message {"key": "value"}
+```
+
+### Log Services
+- **APP**: Application lifecycle and initialization
+- **HTTP**: Request/response logging with performance metrics
+- **RSS**: Feed generation and caching operations
+- **FETCH**: Tweet fetching operations
+- **TWITTER**: Twitter API interactions
+- **DATABASE**: Database operations and queries
+- **SCHEDULER**: Background task scheduling (server mode only)
+
+### Debug Mode
+Enable detailed debug logging by setting:
+```bash
+DEBUG=true
+NODE_ENV=development
+```
+
+### Performance Metrics
+The application automatically logs performance metrics for:
+- HTTP request duration
+- RSS feed generation time
+- Tweet fetch operations
+- Database query performance
+
+### Error Context
+All errors include comprehensive context:
+- Stack traces
+- Request IDs for correlation
+- Operation duration
+- Relevant metadata
 
 ## Deployment Modes
 
