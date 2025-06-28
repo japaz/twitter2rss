@@ -79,7 +79,28 @@ class TwitterListRSS {
       
       // Initialize Twitter service
       Logger.info('TWITTER', 'Initializing Twitter service');
-      this.twitterService = new TwitterService(process.env.TWITTER_BEARER_TOKEN);
+      
+      // Determine authentication method based on available credentials
+      let twitterCredentials;
+      if (process.env.TWITTER_ACCESS_TOKEN && process.env.TWITTER_ACCESS_SECRET && 
+          process.env.TWITTER_API_KEY && process.env.TWITTER_API_SECRET) {
+        // User Context authentication (for private lists)
+        Logger.info('TWITTER', 'Using User Context authentication for private list access');
+        twitterCredentials = {
+          appKey: process.env.TWITTER_API_KEY,
+          appSecret: process.env.TWITTER_API_SECRET,
+          accessToken: process.env.TWITTER_ACCESS_TOKEN,
+          accessSecret: process.env.TWITTER_ACCESS_SECRET
+        };
+      } else if (process.env.TWITTER_BEARER_TOKEN) {
+        // Bearer Token authentication (for public lists only)
+        Logger.info('TWITTER', 'Using Bearer Token authentication for public list access');
+        twitterCredentials = process.env.TWITTER_BEARER_TOKEN;
+      } else {
+        throw new Error('No valid Twitter API credentials found. Need either Bearer Token or OAuth 1.0a credentials.');
+      }
+      
+      this.twitterService = new TwitterService(twitterCredentials);
       
       // Verify Twitter API credentials
       Logger.info('TWITTER', 'Verifying API credentials');
@@ -162,12 +183,34 @@ class TwitterListRSS {
   }
 
   validateConfig() {
-    const required = ['TWITTER_BEARER_TOKEN', 'TWITTER_LIST_ID'];
-    const missing = required.filter(key => !process.env[key]);
-    
-    if (missing.length > 0) {
-      throw new Error(`Missing required environment variables: ${missing.join(', ')}`);
+    // Always require TWITTER_LIST_ID
+    if (!process.env.TWITTER_LIST_ID) {
+      throw new Error('Missing required environment variable: TWITTER_LIST_ID');
     }
+    
+    // Check for either Bearer Token OR OAuth 1.0a credentials
+    const hasBearerToken = !!process.env.TWITTER_BEARER_TOKEN;
+    const hasOAuthCredentials = !!(
+      process.env.TWITTER_API_KEY && 
+      process.env.TWITTER_API_SECRET && 
+      process.env.TWITTER_ACCESS_TOKEN && 
+      process.env.TWITTER_ACCESS_SECRET
+    );
+    
+    if (!hasBearerToken && !hasOAuthCredentials) {
+      throw new Error(`Missing Twitter API credentials. You need either:
+1. TWITTER_BEARER_TOKEN (for public lists), OR
+2. All OAuth 1.0a credentials for private lists:
+   - TWITTER_API_KEY
+   - TWITTER_API_SECRET  
+   - TWITTER_ACCESS_TOKEN
+   - TWITTER_ACCESS_SECRET`);
+    }
+    
+    Logger.info('APP', 'Authentication method determined', {
+      method: hasBearerToken ? (hasOAuthCredentials ? 'OAuth (preferred for private lists)' : 'Bearer Token (public lists only)') : 'OAuth (private lists)',
+      canAccessPrivateLists: hasOAuthCredentials
+    });
   }
 
   setupRoutes() {

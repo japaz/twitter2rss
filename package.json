@@ -9,6 +9,9 @@
     "test": "jest",
     "build": "echo 'No build step required'",
     "vercel-build": "echo 'Vercel build complete'",
+    "verify": "node scripts/verify-setup.js",
+    "verify:basic": "node scripts/verify-basic.js",
+    "test:rate-limits": "node scripts/test-rate-limits.js",
     "monitor:health": "node scripts/monitor.js health",
     "monitor:load": "node scripts/monitor.js load",
     "monitor:watch": "node scripts/monitor.js monitor"
