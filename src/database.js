@@ -100,34 +100,38 @@ class Database {
       'CREATE INDEX IF NOT EXISTS idx_config_key ON config(key)'
     ];
 
-    this.db.run(createTweetsTable, (err) => {
-      if (err) {
-        dbLogger.error('Failed to create tweets table', { error: err.message });
-      } else {
-        dbLogger.info('Tweets table created or verified');
-      }
-    });
-    
-    this.db.run(createConfigTable, (err) => {
-      if (err) {
-        dbLogger.error('Failed to create config table', { error: err.message });
-      } else {
-        dbLogger.info('Config table created or verified');
-      }
-    });
-    
-    // Create indexes
-    dbLogger.info('Creating performance indexes');
-    createIndexes.forEach((indexQuery, i) => {
-      this.db.run(indexQuery, (err) => {
+    // Use serialize to ensure proper execution order
+    this.db.serialize(() => {
+      // Create tables first
+      this.db.run(createTweetsTable, (err) => {
         if (err) {
-          dbLogger.error('Failed to create index', { 
-            error: err.message, 
-            indexNumber: i + 1 
-          });
+          dbLogger.error('Failed to create tweets table', { error: err.message });
         } else {
-          dbLogger.debug('Index created or verified', { indexNumber: i + 1 });
+          dbLogger.info('Tweets table created or verified');
         }
+      });
+      
+      this.db.run(createConfigTable, (err) => {
+        if (err) {
+          dbLogger.error('Failed to create config table', { error: err.message });
+        } else {
+          dbLogger.info('Config table created or verified');
+        }
+      });
+      
+      // Create indexes after tables are created
+      dbLogger.info('Creating performance indexes');
+      createIndexes.forEach((indexQuery, i) => {
+        this.db.run(indexQuery, (err) => {
+          if (err) {
+            dbLogger.error('Failed to create index', { 
+              error: err.message, 
+              indexNumber: i + 1 
+            });
+          } else {
+            dbLogger.debug('Index created or verified', { indexNumber: i + 1 });
+          }
+        });
       });
     });
   }
