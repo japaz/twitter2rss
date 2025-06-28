@@ -6,10 +6,13 @@ Convert your Twitter/X lists into RSS feeds with automatic updates and adaptive 
 
 - 🔄 **Adaptive Scheduling**: Automatically adjusts fetch frequency based on activity
 - 📱 **Full Tweet Support**: Includes text, media, links, hashtags, and engagement metrics
-- 🗄️ **SQLite Storage**: Persistent storage for tweets and configuration
-- 🌐 **REST API**: Status monitoring and manual refresh endpoints
+- 🗄️ **SQLite Storage**: Persistent storage with optimized indexes for performance
+- 🌐 **REST API**: Status monitoring, manual refresh, and cleanup endpoints
 - ⚡ **Rate Limit Friendly**: Designed to work within Twitter's free tier limits
-- 🚀 **Railway Ready**: Optimized for Railway deployment
+- 🚀 **Cloud Ready**: Optimized for modern cloud deployment platforms
+- 📊 **Performance Monitoring**: Built-in metrics and monitoring tools
+- 🧹 **Automatic Cleanup**: Data retention policies to prevent database bloat
+- ⚡ **Smart Caching**: Intelligent RSS feed caching with TTL
 
 ## Quick Start
 
@@ -28,30 +31,62 @@ https://twitter.com/i/lists/1234567890123456789
 ```
 The number at the end (`1234567890123456789`) is your List ID.
 
-### 3. Deploy to Railway
+### 3. Deploy to Cloud Platform
+
+Choose one of these free deployment options:
+
+#### Option A: Render (Recommended - Free Tier Available)
 
 1. Fork this repository
-2. Connect your GitHub account to [Railway](https://railway.app)
-3. Create a new project from your forked repo
-4. Add the following environment variables in Railway:
+2. Sign up at [Render](https://render.com)
+3. Create a new "Web Service" from your GitHub repo
+4. Set the following in Render:
+   - **Build Command**: `npm install`
+   - **Start Command**: `npm start`
+   - **Environment Variables**:
 
 ```bash
 TWITTER_BEARER_TOKEN=your_bearer_token_here
 TWITTER_LIST_ID=your_list_id_here
 RSS_TITLE=My Twitter List Feed
 RSS_DESCRIPTION=RSS feed from my Twitter list
-RSS_SITE_URL=https://your-app.up.railway.app
-RSS_FEED_URL=https://your-app.up.railway.app/rss
+RSS_SITE_URL=https://your-app-name.onrender.com
+RSS_FEED_URL=https://your-app-name.onrender.com/rss
 ```
 
-5. Deploy!
+#### Option B: Fly.io (Free Tier Available)
+
+1. Install [Fly CLI](https://fly.io/docs/hands-on/install-flyctl/)
+2. Run `fly auth signup` or `fly auth login`
+3. In your project directory: `fly launch`
+4. Set environment variables: `fly secrets set TWITTER_BEARER_TOKEN=your_token TWITTER_LIST_ID=your_list_id`
+
+#### Option C: Vercel (Serverless - Free Tier)
+
+1. Fork this repository
+2. Sign up at [Vercel](https://vercel.com)
+3. Connect your GitHub account and import your forked repository
+4. Set environment variables in Vercel dashboard:
+   - `TWITTER_BEARER_TOKEN`: Your Twitter API Bearer Token
+   - `TWITTER_LIST_ID`: Your Twitter list ID
+   - `RSS_TITLE`: Your RSS feed title (optional)
+   - `RSS_DESCRIPTION`: Your RSS feed description (optional)
+   - `RSS_SITE_URL`: Your Vercel app URL (e.g., `https://your-app.vercel.app`)
+   - `RSS_FEED_URL`: Your RSS feed URL (e.g., `https://your-app.vercel.app/rss`)
+5. Deploy automatically on push to main branch
+
+**Note:** Vercel runs in serverless mode, so:
+- No background scheduler (RSS updates on-demand when accessed)
+- Database uses temporary storage (resets on cold starts)
+- Best for low-traffic RSS feeds
 
 ### 4. Access Your RSS Feed
 
 Your RSS feed will be available at:
-```
-https://your-app.up.railway.app/rss
-```
+
+- **Render**: `https://your-app-name.onrender.com/rss`
+- **Fly.io**: `https://your-app-name.fly.dev/rss`
+- **Vercel**: `https://your-app.vercel.app/rss`
 
 ## Local Development
 
@@ -111,6 +146,9 @@ Health check endpoint for monitoring.
 | `PORT` | No | 3000 | Port for the application |
 | `MIN_UPDATE_INTERVAL` | No | 60 | Minimum update interval in minutes |
 | `MAX_UPDATE_INTERVAL` | No | 480 | Maximum update interval in minutes |
+| `RSS_CACHE_TTL` | No | 300 | RSS cache TTL in seconds |
+| `MAX_TWEETS_PER_FEED` | No | 50 | Maximum tweets in RSS feed |
+| `RETENTION_DAYS` | No | 30 | Days to keep tweets |
 
 ### Adaptive Scheduling
 
@@ -122,6 +160,22 @@ The application automatically adjusts how often it checks for new tweets:
 - **No Activity**: Gradually increases interval between checks (up to maximum)
 
 This ensures efficient use of Twitter API rate limits while keeping the feed updated.
+
+## Deployment Modes
+
+The application supports two deployment modes:
+
+### Server Mode (Render, Fly.io)
+- **Background Scheduler**: Automatically fetches tweets at adaptive intervals
+- **Persistent Database**: SQLite database persists between restarts
+- **Continuous Updates**: RSS feed updates automatically based on Twitter activity
+- **Best for**: Regular RSS feed consumption, higher traffic
+
+### Serverless Mode (Vercel)
+- **On-Demand Updates**: Fetches fresh tweets only when RSS feed is requested
+- **Temporary Database**: Uses `/tmp` storage, resets on cold starts
+- **Fresh Data**: Always serves recent tweets (within cache TTL)
+- **Best for**: Occasional RSS feed access, lower traffic
 
 ## Twitter API Rate Limits
 
@@ -189,5 +243,5 @@ MIT License - see LICENSE file for details.
 If you encounter any issues:
 1. Check the troubleshooting section
 2. Review the `/status` endpoint output
-3. Check Railway logs for error details
+3. Check your deployment platform's logs for error details
 4. Open an issue in the repository

@@ -63,30 +63,23 @@ class RSSService {
     // Format tweet text with clickable links
     let tweetText = tweet.text;
     
-    // Replace URLs with clickable links
-    urls.forEach(urlEntity => {
-      const displayUrl = urlEntity.display_url || urlEntity.url;
-      const expandedUrl = urlEntity.expanded_url || urlEntity.url;
-      tweetText = tweetText.replace(
-        urlEntity.url, 
-        `<a href="${expandedUrl}" target="_blank">${displayUrl}</a>`
-      );
-    });
+    // Batch replace URLs for better performance
+    if (urls && urls.length > 0) {
+      const urlReplacements = urls.map(urlEntity => ({
+        original: urlEntity.url,
+        replacement: `<a href="${urlEntity.expanded_url || urlEntity.url}" target="_blank">${urlEntity.display_url || urlEntity.url}</a>`
+      }));
+      
+      urlReplacements.forEach(({ original, replacement }) => {
+        tweetText = tweetText.replace(original, replacement);
+      });
+    }
 
-    // Convert hashtags to searchable links
-    tweetText = tweetText.replace(
-      /#(\w+)/g, 
-      '<a href="https://twitter.com/hashtag/$1" target="_blank">#$1</a>'
-    );
-
-    // Convert mentions to profile links
-    tweetText = tweetText.replace(
-      /@(\w+)/g, 
-      '<a href="https://twitter.com/$1" target="_blank">@$1</a>'
-    );
-
-    // Convert line breaks to HTML
-    tweetText = tweetText.replace(/\n/g, '<br>');
+    // Convert hashtags and mentions more efficiently
+    tweetText = tweetText
+      .replace(/#(\w+)/g, '<a href="https://twitter.com/hashtag/$1" target="_blank">#$1</a>')
+      .replace(/@(\w+)/g, '<a href="https://twitter.com/$1" target="_blank">@$1</a>')
+      .replace(/\n/g, '<br>');
 
     content += `<p>${tweetText}</p>`;
 

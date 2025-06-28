@@ -91,22 +91,38 @@ class AdaptiveScheduler {
   }
 
   scheduleNext(fetchFunction) {
-    // Clear existing task
-    if (this.task) {
+    // Clear existing task to prevent memory leaks
+    if (this.task && this.task.destroy) {
+      this.task.destroy();
+    } else if (this.task && this.task.stop) {
       this.task.stop();
     }
+    this.task = null;
 
-    // Convert minutes to cron expression
-    const cronExpression = `*/${Math.round(this.currentInterval)} * * * *`;
+    // Convert minutes to cron expression, ensuring minimum of 1 minute
+    const intervalMinutes = Math.max(Math.round(this.currentInterval), 1);
+    const cronExpression = `*/${intervalMinutes} * * * *`;
     
-    console.log(`Scheduling next fetch with cron expression: ${cronExpression}`);
+    console.log(`Scheduling next fetch with cron expression: ${cronExpression} (${intervalMinutes} minutes)`);
     
-    this.task = cron.schedule(cronExpression, () => {
-      this.runFetch(fetchFunction);
-    }, {
-      scheduled: true,
-      timezone: "UTC"
-    });
+    try {
+      this.task = cron.schedule(cronExpression, () => {
+        this.runFetch(fetchFunction);
+      }, {
+        scheduled: true,
+        timezone: "UTC"
+      });
+    } catch (error) {
+      console.error('Failed to schedule task:', error);
+      // Fallback to a default 60-minute interval
+      this.currentInterval = 60;
+      this.task = cron.schedule('0 * * * *', () => {
+        this.runFetch(fetchFunction);
+      }, {
+        scheduled: true,
+        timezone: "UTC"
+      });
+    }
   }
 
   async getStatus() {
@@ -127,7 +143,12 @@ class AdaptiveScheduler {
 
   stop() {
     if (this.task) {
-      this.task.stop();
+      if (this.task.destroy) {
+        this.task.destroy();
+      } else if (this.task.stop) {
+        this.task.stop();
+      }
+      this.task = null;
       console.log('Scheduler stopped');
     }
   }

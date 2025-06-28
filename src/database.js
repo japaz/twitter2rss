@@ -9,20 +9,26 @@ class Database {
 
   init() {
     // Create database file in a persistent directory
-    const dbPath = path.join(__dirname, '..', 'data', 'tweets.db');
+    // For serverless, try to use /tmp directory as fallback
+    const isServerless = process.env.VERCEL || process.env.AWS_LAMBDA_FUNCTION_NAME;
+    const dbPath = isServerless 
+      ? '/tmp/tweets.db' 
+      : path.join(__dirname, '..', 'data', 'tweets.db');
     
-    // Ensure data directory exists
-    const fs = require('fs');
-    const dataDir = path.dirname(dbPath);
-    if (!fs.existsSync(dataDir)) {
-      fs.mkdirSync(dataDir, { recursive: true });
+    // Ensure data directory exists (only for non-serverless)
+    if (!isServerless) {
+      const fs = require('fs');
+      const dataDir = path.dirname(dbPath);
+      if (!fs.existsSync(dataDir)) {
+        fs.mkdirSync(dataDir, { recursive: true });
+      }
     }
 
     this.db = new sqlite3.Database(dbPath, (err) => {
       if (err) {
         console.error('Error opening database:', err);
       } else {
-        console.log('Connected to SQLite database');
+        console.log(`Connected to SQLite database at ${dbPath}`);
         this.createTables();
       }
     });
@@ -52,8 +58,21 @@ class Database {
       )
     `;
 
+    // Create indexes for better performance
+    const createIndexes = [
+      'CREATE INDEX IF NOT EXISTS idx_tweets_created_at ON tweets(created_at DESC)',
+      'CREATE INDEX IF NOT EXISTS idx_tweets_fetched_at ON tweets(fetched_at DESC)',
+      'CREATE INDEX IF NOT EXISTS idx_tweets_author_id ON tweets(author_id)',
+      'CREATE INDEX IF NOT EXISTS idx_config_key ON config(key)'
+    ];
+
     this.db.run(createTweetsTable);
     this.db.run(createConfigTable);
+    
+    // Create indexes
+    createIndexes.forEach(indexQuery => {
+      this.db.run(indexQuery);
+    });
   }
 
   async saveTweets(tweets) {
@@ -140,6 +159,47 @@ class Database {
         (err, row) => {
           if (err) reject(err);
           else resolve(row ? row.id : null);
+        }
+      );
+    });
+  }
+
+  async cleanupOldTweets(retentionDays = 30) {
+    return new Promise((resolve, reject) => {
+      const cutoffDate = new Date();
+      cutoffDate.setDate(cutoffDate.getDate() - retentionDays);
+      
+      this.db.run(
+        'DELETE FROM tweets WHERE created_at < ?',
+        [cutoffDate.toISOString()],
+        function(err) {
+          if (err) {
+            reject(err);
+          } else {
+            console.log(`Cleaned up ${this.changes} old tweets`);
+            resolve(this.changes);
+          }
+        }
+      );
+    });
+  }
+
+  async getTweetCount() {
+    return new Promise((resolve, reject) => {
+      this.db.get('SELECT COUNT(*) as count FROM tweets', (err, row) => {
+        if (err) reject(err);
+        else resolve(row.count);
+      });
+    });
+  }
+
+  async getOldestTweetDate() {
+    return new Promise((resolve, reject) => {
+      this.db.get(
+        'SELECT created_at FROM tweets ORDER BY created_at ASC LIMIT 1',
+        (err, row) => {
+          if (err) reject(err);
+          else resolve(row ? row.created_at : null);
         }
       );
     });

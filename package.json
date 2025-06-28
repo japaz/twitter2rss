@@ -6,7 +6,12 @@
   "scripts": {
     "start": "node src/index.js",
     "dev": "nodemon src/index.js",
-    "test": "jest"
+    "test": "jest",
+    "build": "echo 'No build step required'",
+    "vercel-build": "echo 'Vercel build complete'",
+    "monitor:health": "node scripts/monitor.js health",
+    "monitor:load": "node scripts/monitor.js load",
+    "monitor:watch": "node scripts/monitor.js monitor"
   },
   "keywords": [
     "twitter",
@@ -24,9 +29,13 @@
     "sqlite3": "^5.1.6",
     "twitter-api-v2": "^1.15.1"
   },
+  "optionalDependencies": {
+    "better-sqlite3": "^11.1.2"
+  },
   "devDependencies": {
     "jest": "^30.0.3",
-    "nodemon": "^3.0.1"
+    "nodemon": "^3.0.1",
+    "supertest": "^7.1.1"
   },
   "engines": {
     "node": ">=18.0.0"
