@@ -174,8 +174,9 @@ class TwitterService {
   /**
    * Wrapper method to handle rate limiting and retries using Twitter's official recommendations
    * Based on: https://docs.x.com/x-api/fundamentals/rate-limits
+   * Conservative retry strategy for free tier usage
    */
-  async makeRequestWithRetry(endpoint, requestFunction, maxRetries = 3) {
+  async makeRequestWithRetry(endpoint, requestFunction, maxRetries = 2) {
     let attempt = 0;
     let lastError;
 

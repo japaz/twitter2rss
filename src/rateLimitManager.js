@@ -29,6 +29,30 @@ class RateLimitManager {
   constructor() {
     this.rateLimits = new Map(); // endpoint -> limit info from headers
     this.lastRequests = new Map(); // endpoint -> last request timestamp
+    this.isFreeTier = this.detectFreeTier(); // Detect free tier usage
+  }
+
+  /**
+   * Detect if we're likely on free tier based on environment and usage patterns
+   */
+  detectFreeTier() {
+    // Free tier indicators:
+    // 1. MIN_UPDATE_INTERVAL >= 120 minutes (2+ hours)
+    // 2. Basic authentication only (no enterprise features)
+    // 3. Conservative max intervals
+    
+    const minInterval = parseInt(process.env.MIN_UPDATE_INTERVAL) || 60;
+    const isConservativeScheduling = minInterval >= 120;
+    
+    const isFreeTierLikely = isConservativeScheduling;
+    
+    rateLimitLogger.info('Free tier detection completed', {
+      isFreeTier: isFreeTierLikely,
+      minUpdateInterval: minInterval,
+      conservativeScheduling: isConservativeScheduling
+    });
+    
+    return isFreeTierLikely;
   }
 
   /**
@@ -176,15 +200,34 @@ class RateLimitManager {
   /**
    * Implement exponential backoff as recommended by Twitter
    * Used as fallback when reset time is not available
+   * Made more conservative for free tier usage
    */
-  calculateExponentialBackoff(attempt, baseDelay = 1000, maxDelay = 15 * 60 * 1000) {
-    // Exponential backoff: baseDelay * 2^attempt, capped at maxDelay
+  calculateExponentialBackoff(attempt, baseDelay = null, maxDelay = null) {
+    // Adjust defaults based on tier detection
+    if (this.isFreeTier) {
+      baseDelay = baseDelay || 10 * 60 * 1000; // 10 minutes for free tier
+      maxDelay = maxDelay || 120 * 60 * 1000;  // 2 hours max for free tier
+    } else {
+      baseDelay = baseDelay || 5 * 60 * 1000;  // 5 minutes for higher tiers
+      maxDelay = maxDelay || 60 * 60 * 1000;   // 1 hour max for higher tiers
+    }
+    
+    // Conservative exponential backoff pattern:
+    // Free tier: 10min, 20min, 40min, 80min, 120min (capped)
+    // Regular: 5min, 10min, 20min, 40min, 60min (capped)
     const delay = Math.min(baseDelay * Math.pow(2, attempt), maxDelay);
-    return delay + Math.random() * 1000; // Add jitter to avoid thundering herd
+    
+    // Add jitter (±10%) to avoid thundering herd, but keep it predictable for logging
+    const jitter = delay * 0.1 * (Math.random() - 0.5) * 2;
+    const finalDelay = delay + jitter;
+    
+    const minimumDelay = this.isFreeTier ? 5 * 60 * 1000 : 60 * 1000; // 5min or 1min minimum
+    return Math.max(finalDelay, minimumDelay);
   }
 
   /**
    * Handle retry logic combining Twitter's recommended approaches
+   * Conservative approach for free tier usage
    */
   async handleRetryDelay(endpoint, attempt, error) {
     const { canRequest, waitTime, resetTime } = this.canMakeRequest(endpoint);
@@ -193,13 +236,20 @@ class RateLimitManager {
       // Use Twitter's official reset time
       await this.waitForRateLimit(endpoint);
     } else {
-      // Fallback to exponential backoff
+      // Fallback to conservative exponential backoff
       const backoffDelay = this.calculateExponentialBackoff(attempt);
+      const delayMinutes = Math.round(backoffDelay / 60000);
       
-      rateLimitLogger.warn('Using exponential backoff as fallback', {
+      const logMessage = this.isFreeTier 
+        ? 'Using extra-conservative exponential backoff for free tier'
+        : 'Using conservative exponential backoff';
+      
+      rateLimitLogger.warn(logMessage, {
         endpoint: this.normalizeEndpoint(endpoint),
         attempt: attempt,
         backoffDelay: backoffDelay,
+        backoffMinutes: delayMinutes,
+        isFreeTier: this.isFreeTier,
         reason: 'no_reset_time_available'
       });
       
